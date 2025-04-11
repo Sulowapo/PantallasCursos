@@ -1,0 +1,398 @@
+@page "/cursos"
+@rendermode InteractiveServer
+
+<h1 class="page-title">Gestión de Cursos</h1>
+
+<div class="intro-container">
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">Administración de Cursos en iVirtual</h5>
+            <p class="card-text">
+                Esta herramienta le permite gestionar los cursos disponibles por departamento.
+                Seleccione un departamento, marque los cursos que desea activar en la plataforma iVirtual y guarde los cambios.
+                Los cursos activados serán inmediatamente accesibles para los estudiantes en la plataforma.
+            </p>
+            <p class="card-text">
+                <strong>Instrucciones:</strong>
+            </p>
+            <ol>
+                <li>Seleccione un departamento del menú desplegable</li>
+                <li>Haga clic en "Buscar" para ver los cursos disponibles</li>
+                <li>Marque las casillas de los cursos que desea activar</li>
+                <li>Haga clic en "Guardar Cambios" para aplicar las modificaciones</li>
+            </ol>
+        </div>
+    </div>
+</div>
+
+<style>
+    .intro-container {
+        margin-bottom: 30px;
+    }
+
+    .button-container {
+        margin-top: 20px;
+        text-align: right;
+    }
+
+    .submit-button {
+        background-color: #007bff;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+
+    .submit-button:hover {
+        background-color: #0069d9;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+    }
+
+    th, td {
+        padding: 10px;
+        border: 1px solid #ddd;
+        text-align: left;
+    }
+
+    th {
+        background-color: #f2f2f2;
+    }
+
+    tr:hover {
+        background-color: #f5f5f5;
+    }
+
+    .sortable {
+        cursor: pointer;
+    }
+
+    .sortable:hover {
+        background-color: #e0e0e0;
+    }
+
+    .sort-icon {
+        margin-left: 5px;
+        font-size: 0.8em;
+    }
+</style>
+
+<div class="form-group">
+    <label for="department">Departamento:</label>
+    <select id="department" @bind="selectedDepartment">
+        <option value="1">Biotecnología y Ciencias Alimentarias</option>
+        <option value="2">Ciencias Agronómicas y Veterinarias</option>
+        <option value="3">Ciencias del Agua y Medio Ambiente</option>
+        <option value="4">Ciencias Administrativas</option>
+        <option value="5">Computación y Diseño</option>
+        <option value="6">Contaduría y Finanzas</option>
+        <option value="7">Desarrollo Académico</option>
+        <option value="8">Educación</option>
+        <option value="9">Gestión y Apoyo a Cuerpos Académicos</option>
+        <option value="10">Gestión y Apoyo a Programas Educativos</option>
+        <option value="11">Ingeniería Civil y Arquitectura</option>
+        <option value="12">Ingeniería Eléctrica y Electrónica</option>
+        <option value="13">Ingeniería Industrial</option>
+        <option value="14">Matemáticas</option>
+        <option value="15">Psicología</option>
+        <option value="16">Sociocultural</option>
+    </select>
+    <button @onclick="Search">Buscar</button>
+</div>
+<table>
+    <thead>
+        <tr>
+            <th>ID Curso</th>
+            <th class="sortable" @onclick="SortByName">
+                Nombre del Curso
+                @if (currentSortColumn == "Name")
+                {
+                    <span class="sort-icon">@(sortAscending ? "↑" : "↓")</span>
+                }
+            </th>
+            <th class="sortable" @onclick="SortByInstructor">
+                Instructor
+                @if (currentSortColumn == "Instructor")
+                {
+                    <span class="sort-icon">@(sortAscending ? "↑" : "↓")</span>
+                }
+            </th>
+            <th>Activado en iVirtual</th>
+        </tr>
+    </thead>
+    <tbody>
+        @if (courses != null && courses.Any())
+        {
+            @foreach (var course in courses)
+            {
+                <tr>
+                    <td>@course.Id</td>
+                    <td>@course.Name</td>
+                    <td>@course.Instructor</td>
+                    <td><input type="checkbox" @bind="course.IsActive" /></td>
+                </tr>
+            }
+        }
+        else
+        {
+            <tr>
+                <td colspan="4">No hay cursos disponibles.</td>
+            </tr>
+        }
+    </tbody>
+</table>
+<div class="button-container">
+    <button class="submit-button" @onclick="ShowConfirmationDialog">Guardar Cambios</button>
+</div>
+
+<!-- Confirmation Modal -->
+<div class="modal fade @(_showConfirmDialog ? "show" : "")" id="confirmationModal" tabindex="-1" role="dialog"
+     style="display: @(_showConfirmDialog ? "block" : "none");"
+     aria-labelledby="confirmationModalLabel" aria-hidden="@(!_showConfirmDialog)">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="confirmationModalLabel">Confirmar Cambios</h5>
+                <button type="button" class="btn-close" @onclick="CloseConfirmationDialog" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                ¿Desea guardar los cambios? Los cursos activados se verán reflejados en el sistema iVirtual.
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" @onclick="CloseConfirmationDialog">Cancelar</button>
+                <button type="button" class="btn btn-primary" @onclick="SaveChanges">Aceptar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Success Modal -->
+<div class="modal fade @(_showSuccessDialog ? "show" : "")" id="successModal" tabindex="-1" role="dialog"
+     style="display: @(_showSuccessDialog ? "block" : "none");"
+     aria-labelledby="successModalLabel" aria-hidden="@(!_showSuccessDialog)">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="successModalLabel">Operación Exitosa</h5>
+                <button type="button" class="btn-close" @onclick="CloseSuccessDialog" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                Los cambios fueron guardados exitosamente.
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" @onclick="CloseSuccessDialog">Aceptar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Backdrop -->
+@if (_showConfirmDialog || _showSuccessDialog)
+{
+    <div class="modal-backdrop fade show"></div>
+}
+
+@code {
+    private string selectedDepartment = "1";
+    private List<Course> courses = new();
+    private bool _showConfirmDialog = false;
+    private bool _showSuccessDialog = false;
+
+    // Sorting properties
+    private string currentSortColumn = "";
+    private bool sortAscending = true;
+
+    protected override void OnInitialized()
+    {
+        LoadCourses(); // Populate the table when the page loads
+    }
+
+    private void Search()
+    {
+        Console.WriteLine($"Search clicked with department: {selectedDepartment}");
+        // Clear the current courses list
+        courses.Clear();
+        // Load new courses based on selected department
+        LoadCourses();
+        // Force UI to update
+        StateHasChanged();
+    }
+
+    private void ShowConfirmationDialog()
+    {
+        _showConfirmDialog = true;
+    }
+
+    private void CloseConfirmationDialog()
+    {
+        _showConfirmDialog = false;
+    }
+
+    private void CloseSuccessDialog()
+    {
+        _showSuccessDialog = false;
+    }
+
+    private void SortByName()
+    {
+        SortBy("Name");
+    }
+
+    private void SortByInstructor()
+    {
+        SortBy("Instructor");
+    }
+
+    private void SortBy(string columnName)
+    {
+        // If clicking the same column, toggle sort direction
+        if (currentSortColumn == columnName)
+        {
+            sortAscending = !sortAscending;
+        }
+        else
+        {
+            // New column, default to ascending
+            currentSortColumn = columnName;
+            sortAscending = true;
+        }
+
+        // Apply sorting based on column and direction
+        switch (columnName)
+        {
+            case "Name":
+                courses = sortAscending
+                    ? courses.OrderBy(c => c.Name).ToList()
+                    : courses.OrderByDescending(c => c.Name).ToList();
+                break;
+            case "Instructor":
+                courses = sortAscending
+                    ? courses.OrderBy(c => c.Instructor).ToList()
+                    : courses.OrderByDescending(c => c.Instructor).ToList();
+                break;
+        }
+    }
+
+    private void SaveChanges()
+    {
+        // Close confirmation dialog
+        _showConfirmDialog = false;
+
+        // Remove courses that are marked as active
+        courses = courses.Where(c => !c.IsActive).ToList();
+
+        // Show success dialog
+        _showSuccessDialog = true;
+    }
+
+    private void LoadCourses()
+    {
+        // Simulate loading courses based on the selected department
+        courses = selectedDepartment switch
+        {
+            "1" => new List<Course> // Biotecnología y Ciencias Alimentarias
+            {
+                new Course { Id = 101, Name = "Bioquímica", Instructor = "Dr. Pérez", IsActive = false },
+                new Course { Id = 102, Name = "Microbiología", Instructor = "Dra. Gómez", IsActive = false }
+            },
+            "2" => new List<Course> // Ciencias Agronómicas y Veterinarias
+            {
+                new Course { Id = 201, Name = "Producción Animal", Instructor = "Dr. López", IsActive = false },
+                new Course { Id = 202, Name = "Cultivos Agrícolas", Instructor = "Dra. Martínez", IsActive = false }
+            },
+            "3" => new List<Course> // Ciencias del Agua y Medio Ambiente
+            {
+                new Course { Id = 301, Name = "Hidrología", Instructor = "Dr. Ramírez", IsActive = false },
+                new Course { Id = 302, Name = "Ecología", Instructor = "Dra. García", IsActive = false }
+            },
+            "4" => new List<Course> // Ciencias Administrativas
+            {
+                new Course { Id = 401, Name = "Administración Estratégica", Instructor = "Dr. Rodríguez", IsActive = false },
+                new Course { Id = 402, Name = "Gestión de Proyectos", Instructor = "Dra. Hernández", IsActive = false }
+            },
+            "5" => new List<Course> // Computación y Diseño
+            {
+                new Course { Id = 501, Name = "Programación Avanzada", Instructor = "Omar Lopez", IsActive = false },
+                new Course { Id = 502, Name = "Diseño de software", Instructor = "Dra. Torres", IsActive = false },
+                new Course { Id = 503, Name = "Arquitectura de software", Instructor = "Adrian Macias", IsActive = false },
+                new Course { Id = 504, Name = "Programacion I", Instructor = "Selene Vasquez", IsActive = false },
+                new Course { Id = 505, Name = "Base de datos", Instructor = "Gibran Duran", IsActive = false },
+                new Course { Id = 506, Name = "Programacion II", Instructor = "Domitsu Kono", IsActive = false },
+                new Course { Id = 507, Name = "Estructura de datos", Instructor = "Domitsu Kono", IsActive = false },
+                new Course { Id = 508, Name = "Estructura de datos", Instructor = "Adrian Macias", IsActive = false },
+                new Course { Id = 509, Name = "Seguridad informatica", Instructor = "Alberto Felix", IsActive = false },
+                new Course { Id = 510, Name = "Base de datos Avanzadas", Instructor = "Gibran Duran", IsActive = false },
+                new Course { Id = 511, Name = "Metodologias Agiles", Instructor = "Gilberto Borrego", IsActive = false }
+            },
+            "6" => new List<Course> // Contaduría y Finanzass
+            {
+                new Course { Id = 601, Name = "Contabilidad Financiera", Instructor = "Dr. Flores", IsActive = false },
+                new Course { Id = 602, Name = "Análisis de Inversiones", Instructor = "Dra. Díaz", IsActive = false }
+            },
+            "7" => new List<Course> // Desarrollo Académico
+            {
+                new Course { Id = 701, Name = "Metodología de la Enseñanza", Instructor = "Dr. Mendoza", IsActive = false },
+                new Course { Id = 702, Name = "Evaluación Educativa", Instructor = "Dra. Vargas", IsActive = false }
+            },
+            "8" => new List<Course> // Educación
+            {
+                new Course { Id = 801, Name = "Teorías del Aprendizaje", Instructor = "Dr. Castro", IsActive = false },
+                new Course { Id = 802, Name = "Diseño Curricular", Instructor = "Dra. Reyes", IsActive = false }
+            },
+            "9" => new List<Course> // Gestión y Apoyo a Cuerpos Académicos
+            {
+                new Course { Id = 901, Name = "Metodología de la Investigación", Instructor = "Dr. Ortiz", IsActive = false },
+                new Course { Id = 902, Name = "Gestión de Grupos de Investigación", Instructor = "Dra. Cruz", IsActive = false }
+            },
+            "10" => new List<Course> // Gestión y Apoyo a Programas Educativos
+            {
+                new Course { Id = 1001, Name = "Evaluación de Programas", Instructor = "Dr. Morales", IsActive = false },
+                new Course { Id = 1002, Name = "Acreditación Educativa", Instructor = "Dra. Jiménez", IsActive = false }
+            },
+            "11" => new List<Course> // Ingeniería Civil y Arquitectura
+            {
+                new Course { Id = 1101, Name = "Estructuras", Instructor = "Dr. Gutiérrez", IsActive = false },
+                new Course { Id = 1102, Name = "Diseño Arquitectónico", Instructor = "Dra. Ruiz", IsActive = false }
+            },
+            "12" => new List<Course> // Ingeniería Eléctrica y Electrónica
+            {
+                new Course { Id = 1201, Name = "Circuitos Eléctricos", Instructor = "Dr. Aguilar", IsActive = false },
+                new Course { Id = 1202, Name = "Sistemas Digitales", Instructor = "Dra. Medina", IsActive = false }
+            },
+            "13" => new List<Course> // Ingeniería Industrial
+            {
+                new Course { Id = 1301, Name = "Procesos de Manufactura", Instructor = "Dr. Vega", IsActive = false },
+                new Course { Id = 1302, Name = "Logística y Cadena de Suministro", Instructor = "Dra. Campos", IsActive = false }
+            },
+            "14" => new List<Course> // Matemáticas
+            {
+                new Course { Id = 1401, Name = "Cálculo Avanzado", Instructor = "Dr. Ramos", IsActive = false },
+                new Course { Id = 1402, Name = "Álgebra Lineal", Instructor = "Dra. Silva", IsActive = false }
+            },
+            "15" => new List<Course> // Psicología
+            {
+                new Course { Id = 1501, Name = "Psicología Educativa", Instructor = "Dr. Navarro", IsActive = false },
+                new Course { Id = 1502, Name = "Psicología Organizacional", Instructor = "Dra. Acosta", IsActive = false }
+            },
+            "16" => new List<Course> // Sociocultural
+            {
+                new Course { Id = 1601, Name = "Antropología Social", Instructor = "Dr. Molina", IsActive = false },
+                new Course { Id = 1602, Name = "Estudios Culturales", Instructor = "Dra. Fuentes", IsActive = false }
+            },
+            _ => new List<Course>() // Default case for unexpected or empty values
+        };
+    }
+
+    private class Course
+    {
+        public int Id { get; set; }
+        public string? Name { get; set; }
+        public string? Instructor { get; set; }
+        public bool IsActive { get; set; }
+    }
+}
