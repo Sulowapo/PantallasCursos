@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "D:\\Documentos\\Itson Actividades\\PracticaProfesional2025\\Pantallas\\PruebaCursos\\PruebaCursos.csproj": {}
+    "D:\\Documentos\\Itson Actividades\\PracticaProfesional2025\\Pantallas\\PantallasCursos\\PruebaCursos\\PruebaCursos.csproj": {}
   },
   "projects": {
-    "D:\\Documentos\\Itson Actividades\\PracticaProfesional2025\\Pantallas\\PruebaCursos\\PruebaCursos.csproj": {
+    "D:\\Documentos\\Itson Actividades\\PracticaProfesional2025\\Pantallas\\PantallasCursos\\PruebaCursos\\PruebaCursos.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "D:\\Documentos\\Itson Actividades\\PracticaProfesional2025\\Pantallas\\PruebaCursos\\PruebaCursos.csproj",
+        "projectUniqueName": "D:\\Documentos\\Itson Actividades\\PracticaProfesional2025\\Pantallas\\PantallasCursos\\PruebaCursos\\PruebaCursos.csproj",
         "projectName": "PruebaCursos",
-        "projectPath": "D:\\Documentos\\Itson Actividades\\PracticaProfesional2025\\Pantallas\\PruebaCursos\\PruebaCursos.csproj",
+        "projectPath": "D:\\Documentos\\Itson Actividades\\PracticaProfesional2025\\Pantallas\\PantallasCursos\\PruebaCursos\\PruebaCursos.csproj",
         "packagesPath": "C:\\Users\\Maste\\.nuget\\packages\\",
-        "outputPath": "D:\\Documentos\\Itson Actividades\\PracticaProfesional2025\\Pantallas\\PruebaCursos\\obj\\",
+        "outputPath": "D:\\Documentos\\Itson Actividades\\PracticaProfesional2025\\Pantallas\\PantallasCursos\\PruebaCursos\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\Maste\\AppData\\Roaming\\NuGet\\NuGet.Config",
