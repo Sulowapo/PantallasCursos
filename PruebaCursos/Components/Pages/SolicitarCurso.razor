@@ -1,5 +1,8 @@
 @page "/cursos"
 @rendermode InteractiveServer
+@using System.IO
+@using System.Globalization
+@using System.Text
 
 <h1 class="page-title">Gestión de Cursos</h1>
 
@@ -107,21 +110,29 @@
 <table>
     <thead>
         <tr>
-            <th>ID Curso</th>
+            <th class="sortable" @onclick="SortByName">
+                ID Curso
+                @if (currentSortColumn == "ID Curso")
+                {
+                    <span class="sort-icon">@(sortAscending ? "↑" : "↓")</span>
+                }
+            </th>
             <th class="sortable" @onclick="SortByName">
                 Nombre del Curso
-                @if (currentSortColumn == "Name")
+                @if (currentSortColumn == "Nombre clase")
                 {
                     <span class="sort-icon">@(sortAscending ? "↑" : "↓")</span>
                 }
             </th>
             <th class="sortable" @onclick="SortByInstructor">
                 Instructor
-                @if (currentSortColumn == "Instructor")
+                @if (currentSortColumn == "Nom 1")
                 {
                     <span class="sort-icon">@(sortAscending ? "↑" : "↓")</span>
                 }
             </th>
+            <th>Aula</th>
+            <th>Horario</th>
             <th>Activado en iVirtual</th>
         </tr>
     </thead>
@@ -134,6 +145,8 @@
                     <td>@course.Id</td>
                     <td>@course.Name</td>
                     <td>@course.Instructor</td>
+                    <td>@course.Aula</td>
+                    <td>@course.Horario</td>
                     <td><input type="checkbox" @bind="course.IsActive" /></td>
                 </tr>
             }
@@ -141,11 +154,21 @@
         else
         {
             <tr>
-                <td colspan="4">No hay cursos disponibles.</td>
+                <td colspan="6">No hay cursos disponibles. @(File.Exists(Path.Combine(Directory.GetCurrentDirectory(), "resources", "cat_EM2025.csv")) ? $"Archivo encontrado pero no hay cursos para el departamento seleccionado. Verifique la estructura del CSV." : "Archivo no encontrado.")</td>
             </tr>
         }
     </tbody>
 </table>
+
+@if (hasMoreCourses)
+{
+    <div class="text-center mt-3 mb-3">
+        <button class="btn btn-outline-primary" @onclick="LoadMoreCourses">
+            Ver más cursos
+        </button>
+    </div>
+}
+
 <div class="button-container">
     <button class="submit-button" @onclick="ShowConfirmationDialog">Guardar Cambios</button>
 </div>
@@ -198,10 +221,14 @@
 }
 
 @code {
-    private string selectedDepartment = "1";
-    private List<Course> courses = new();
+    private string selectedDepartment = "5"; // Computación y Diseño por defecto
+    private List<Course> allCourses = new(); // Todos los cursos cargados del CSV
+    private List<Course> courses = new(); // Cursos mostrados actualmente
     private bool _showConfirmDialog = false;
     private bool _showSuccessDialog = false;
+    private int pageSize = 50; // Tamaño de cada lote
+    private int currentPage = 0; // Página actual
+    private bool hasMoreCourses = false; // Indica si hay más cursos para cargar
 
     // Sorting properties
     private string currentSortColumn = "";
@@ -209,18 +236,34 @@
 
     protected override void OnInitialized()
     {
-        LoadCourses(); // Populate the table when the page loads
+        LoadCoursesFromCSV(); // Cargar cursos desde CSV al iniciar
     }
 
     private void Search()
     {
         Console.WriteLine($"Search clicked with department: {selectedDepartment}");
-        // Clear the current courses list
-        courses.Clear();
-        // Load new courses based on selected department
-        LoadCourses();
-        // Force UI to update
+        // Cargar cursos desde CSV basado en el departamento seleccionado
+        LoadCoursesFromCSV();
         StateHasChanged();
+    }
+
+    private void LoadMoreCourses()
+    {
+        currentPage++;
+        int startIndex = currentPage * pageSize;
+        int endIndex = Math.Min(startIndex + pageSize, allCourses.Count);
+        
+        if (startIndex < allCourses.Count)
+        {
+            // Añadir el siguiente lote de cursos a la lista mostrada
+            courses.AddRange(allCourses.Skip(startIndex).Take(pageSize));
+            
+            // Verificar si hay más cursos para cargar
+            hasMoreCourses = endIndex < allCourses.Count;
+            
+            Console.WriteLine($"Cargados cursos {startIndex + 1} a {endIndex} de {allCourses.Count}");
+            StateHasChanged();
+        }
     }
 
     private void ShowConfirmationDialog()
@@ -266,16 +309,25 @@
         switch (columnName)
         {
             case "Name":
-                courses = sortAscending
-                    ? courses.OrderBy(c => c.Name).ToList()
-                    : courses.OrderByDescending(c => c.Name).ToList();
+                allCourses = sortAscending
+                    ? allCourses.OrderBy(c => c.Name).ToList()
+                    : allCourses.OrderByDescending(c => c.Name).ToList();
                 break;
             case "Instructor":
-                courses = sortAscending
-                    ? courses.OrderBy(c => c.Instructor).ToList()
-                    : courses.OrderByDescending(c => c.Instructor).ToList();
+                allCourses = sortAscending
+                    ? allCourses.OrderBy(c => c.Instructor).ToList()
+                    : allCourses.OrderByDescending(c => c.Instructor).ToList();
                 break;
         }
+        
+        // Reiniciar la paginación
+        currentPage = 0;
+        
+        // Actualizar la lista mostrada
+        courses = allCourses.Take(pageSize).ToList();
+        
+        // Verificar si hay más cursos para cargar
+        hasMoreCourses = allCourses.Count > pageSize;
     }
 
     private void SaveChanges()
@@ -283,109 +335,292 @@
         // Close confirmation dialog
         _showConfirmDialog = false;
 
-        // Remove courses that are marked as active
-        courses = courses.Where(c => !c.IsActive).ToList();
+        // Actualizar la lista completa de cursos
+        foreach (var displayedCourse in courses)
+        {
+            var originalCourse = allCourses.FirstOrDefault(c => c.Id == displayedCourse.Id && c.Name == displayedCourse.Name);
+            if (originalCourse != null)
+            {
+                originalCourse.IsActive = displayedCourse.IsActive;
+            }
+        }
+
+        // Eliminar cursos marcados como activos de la lista completa
+        allCourses = allCourses.Where(c => !c.IsActive).ToList();
+        
+        // Actualizar la lista mostrada
+        int startIndex = currentPage * pageSize;
+        int endIndex = Math.Min(startIndex + pageSize, allCourses.Count);
+        courses = allCourses.Skip(startIndex).Take(pageSize).ToList();
+        
+        // Verificar si hay más cursos para cargar
+        hasMoreCourses = endIndex < allCourses.Count;
 
         // Show success dialog
         _showSuccessDialog = true;
     }
 
+    private void LoadCoursesFromCSV()
+    {
+        allCourses.Clear();
+        courses.Clear();
+        currentPage = 0;
+        
+        try
+        {
+            string filePath = Path.Combine(Directory.GetCurrentDirectory(), "resources", "cat_EM2025.csv");
+            Console.WriteLine($"Buscando archivo en: {filePath}");
+            
+            if (File.Exists(filePath))
+            {
+                Console.WriteLine("Archivo encontrado, procediendo a leer");
+                
+                // Usar FileShare.ReadWrite para permitir acceso al archivo incluso si está siendo usado
+                string[] lines;
+                using (var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                using (var reader = new StreamReader(fileStream, Encoding.GetEncoding("ISO-8859-1")))
+                {
+                    // Leer todo el contenido del archivo
+                    string content = reader.ReadToEnd();
+                    lines = content.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                }
+                
+                Console.WriteLine($"Líneas leídas: {lines.Length}");
+                
+                // Diccionario para rastrear IDs de combinación ya procesados
+                Dictionary<string, bool> idCombProcesados = new Dictionary<string, bool>();
+                
+                // Buscar cursos basados en el ID del curso o nombre de la materia
+                for (int i = 2; i < lines.Length; i++) // Empezar desde la línea 2 (después de los encabezados)
+                {
+                    string line = lines[i];
+                    if (string.IsNullOrWhiteSpace(line)) continue;
+                    
+                    // Procesar la línea correctamente, teniendo en cuenta las comas dentro de comillas
+                    List<string> fields = new List<string>();
+                    bool inQuotes = false;
+                    StringBuilder field = new StringBuilder();
+                    
+                    for (int j = 0; j < line.Length; j++)
+                    {
+                        char c = line[j];
+                        
+                        if (c == '"')
+                        {
+                            inQuotes = !inQuotes;
+                        }
+                        else if (c == ',' && !inQuotes)
+                        {
+                            fields.Add(field.ToString().Trim());
+                            field.Clear();
+                        }
+                        else
+                        {
+                            field.Append(c);
+                        }
+                    }
+                    
+                    // Añadir el último campo
+                    fields.Add(field.ToString().Trim());
+                    
+                    // Verificar que haya suficientes campos
+                    if (fields.Count < 30) continue;
+                    
+                    // Obtener los campos relevantes
+                    string idCurso = fields.Count > 3 ? fields[3].Trim() : "";
+                    string nombreCurso = fields.Count > 6 ? fields[6].Trim() : "";
+                    string instructor = fields.Count > 12 ? fields[12].Trim() : "";
+                    string estadoClase = fields.Count > 14 ? fields[14].Trim() : "";
+                    string idComb = fields.Count > 8 ? fields[8].Trim() : "";
+                    string materia = fields.Count > 27 ? fields[27].Trim() : "";
+                    
+                    // Obtener datos para las nuevas columnas
+                    string aula = fields.Count > 13 ? fields[13].Trim() : "";
+                    
+                    // Datos para el horario
+                    string horaInicio = fields.Count > 16 ? fields[16].Trim() : "";
+                    string horaFin = fields.Count > 17 ? fields[17].Trim() : "";
+                    bool lunes = fields.Count > 18 && fields[18].Trim().Equals("Y", StringComparison.OrdinalIgnoreCase);
+                    bool martes = fields.Count > 19 && fields[19].Trim().Equals("Y", StringComparison.OrdinalIgnoreCase);
+                    bool miercoles = fields.Count > 20 && fields[20].Trim().Equals("Y", StringComparison.OrdinalIgnoreCase);
+                    bool jueves = fields.Count > 21 && fields[21].Trim().Equals("Y", StringComparison.OrdinalIgnoreCase);
+                    bool viernes = fields.Count > 22 && fields[22].Trim().Equals("Y", StringComparison.OrdinalIgnoreCase);
+                    bool sabado = fields.Count > 23 && fields[23].Trim().Equals("Y", StringComparison.OrdinalIgnoreCase);
+                    bool domingo = fields.Count > 24 && fields[24].Trim().Equals("Y", StringComparison.OrdinalIgnoreCase);
+                    
+                    // Formatear el horario
+                    string horario = FormatearHorario(horaInicio, horaFin, lunes, martes, miercoles, jueves, viernes, sabado, domingo);
+                    
+                    // Validación 1: Filtrar secciones canceladas
+                    if (estadoClase.Contains("Sección Cancelada", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Console.WriteLine($"Sección cancelada ignorada: ID={idCurso}, Nombre={nombreCurso}");
+                        continue;
+                    }
+                    
+                    // Validación 2: Verificar si ya procesamos un curso con el mismo ID de combinación
+                    if (!string.IsNullOrEmpty(idComb) && idCombProcesados.ContainsKey(idComb))
+                    {
+                        Console.WriteLine($"Curso combinado ignorado: ID={idCurso}, Nombre={nombreCurso}, ID Comb={idComb}");
+                        continue;
+                    }
+                    
+                    // Marcar este ID de combinación como procesado
+                    if (!string.IsNullOrEmpty(idComb))
+                    {
+                        idCombProcesados[idComb] = true;
+                    }
+                    
+                    // Formatear el nombre del instructor (convertir "Apellido, Nombre" a "Nombre Apellido")
+                    if (instructor.Contains(","))
+                    {
+                        string[] nombrePartes = instructor.Split(',');
+                        if (nombrePartes.Length >= 2)
+                        {
+                            instructor = $"{nombrePartes[1].Trim()} {nombrePartes[0].Trim()}";
+                        }
+                    }
+                    
+                    // Filtrar por departamento basado en el ID del curso o materia
+                    bool esCursoDeComputacion = false;
+                    
+                    // Para Computación y Diseño (departamento 5)
+                    if (selectedDepartment == "5")
+                    {
+                        // Verificar si el ID del curso o la materia contienen palabras clave de computación
+                        esCursoDeComputacion = 
+                            idCurso.Contains("ISW", StringComparison.OrdinalIgnoreCase) || // Ingeniería de Software
+                            idCurso.Contains("IDS", StringComparison.OrdinalIgnoreCase) || // Diseño de Software
+                            idCurso.Contains("IIS", StringComparison.OrdinalIgnoreCase) || // Ingeniería en Sistemas
+                            idCurso.Contains("LDG", StringComparison.OrdinalIgnoreCase) || // Licenciatura en Diseño Gráfico
+                            nombreCurso.Contains("Comput", StringComparison.OrdinalIgnoreCase) ||
+                            nombreCurso.Contains("Program", StringComparison.OrdinalIgnoreCase) ||
+                            nombreCurso.Contains("Diseño", StringComparison.OrdinalIgnoreCase) ||
+                            nombreCurso.Contains("Software", StringComparison.OrdinalIgnoreCase) ||
+                            materia.Contains("Comput", StringComparison.OrdinalIgnoreCase) ||
+                            materia.Contains("Diseño", StringComparison.OrdinalIgnoreCase);
+                    }
+                    
+                    if (esCursoDeComputacion)
+                    {
+                        Console.WriteLine($"Curso de computación encontrado: ID={idCurso}, Nombre={nombreCurso}, Instructor={instructor}");
+                        
+                        // Añadir el curso a la lista si no existe ya
+                        if (!allCourses.Any(c => c.Id.ToString() == idCurso && c.Name == nombreCurso))
+                        {
+                            allCourses.Add(new Course
+                            {
+                                Id = int.TryParse(idCurso, out int id) ? id : 0,
+                                Name = nombreCurso,
+                                Instructor = instructor.Replace("\"", ""),
+                                Aula = aula,
+                                Horario = horario,
+                                IsActive = false,
+                                IdComb = idComb
+                            });
+                        }
+                    }
+                }
+                
+                Console.WriteLine($"Total de cursos cargados: {allCourses.Count}");
+                
+                // Cargar el primer lote de cursos
+                courses = allCourses.Take(pageSize).ToList();
+                
+                // Verificar si hay más cursos para cargar
+                hasMoreCourses = allCourses.Count > pageSize;
+                
+                // Si no se encontraron cursos, cargar datos de ejemplo
+                if (allCourses.Count == 0)
+                {
+                    Console.WriteLine("No se encontraron cursos en el CSV, cargando datos de ejemplo");
+                    LoadCourses();
+                    hasMoreCourses = false;
+                }
+            }
+            else
+            {
+                Console.WriteLine($"Archivo no encontrado: {filePath}");
+                LoadCourses();
+                hasMoreCourses = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al cargar CSV: {ex.Message}");
+            Console.WriteLine($"Stack trace: {ex.StackTrace}");
+            LoadCourses();
+            hasMoreCourses = false;
+        }
+    }
+
+    private string FormatearHorario(string horaInicio, string horaFin, bool lunes, bool martes, bool miercoles, bool jueves, bool viernes, bool sabado, bool domingo)
+    {
+        // Formatear las horas (convertir de formato 24h a 12h con am/pm si es necesario)
+        string horaInicioFormateada = FormatearHora(horaInicio);
+        string horaFinFormateada = FormatearHora(horaFin);
+        
+        // Construir la cadena de días
+        List<string> dias = new List<string>();
+        if (lunes) dias.Add("Lu");
+        if (martes) dias.Add("Ma");
+        if (miercoles) dias.Add("Mi");
+        if (jueves) dias.Add("Ju");
+        if (viernes) dias.Add("Vi");
+        if (sabado) dias.Add("Sa");
+        if (domingo) dias.Add("Do");
+        
+        string diasFormateados = string.Join(",", dias);
+        
+        // Si no hay días o no hay horas, devolver cadena vacía
+        if (string.IsNullOrEmpty(diasFormateados) || string.IsNullOrEmpty(horaInicioFormateada) || string.IsNullOrEmpty(horaFinFormateada))
+        {
+            return "No especificado";
+        }
+        
+        // Formatear el horario completo
+        return $"{diasFormateados} {horaInicioFormateada}-{horaFinFormateada}";
+    }
+
+    private string FormatearHora(string hora)
+    {
+        if (string.IsNullOrEmpty(hora)) return "";
+        
+        // Intentar parsear la hora
+        if (TimeSpan.TryParse(hora, out TimeSpan timeSpan))
+        {
+            // Convertir a formato 12h con am/pm
+            string periodo = timeSpan.Hours < 12 ? "am" : "pm";
+            int hora12 = timeSpan.Hours % 12;
+            if (hora12 == 0) hora12 = 12; // 0 horas en formato 12h es 12 am
+            
+            return $"{hora12}:{timeSpan.Minutes:D2} {periodo}";
+        }
+        
+        // Si no se puede parsear, devolver la hora original
+        return hora;
+    }
+
+    // Mantener el método original como respaldo
     private void LoadCourses()
     {
-        // Simulate loading courses based on the selected department
+        // Código original para cargar cursos de ejemplo
         courses = selectedDepartment switch
         {
-            "1" => new List<Course> // Biotecnología y Ciencias Alimentarias
-            {
-                new Course { Id = 101, Name = "Bioquímica", Instructor = "Dr. Pérez", IsActive = false },
-                new Course { Id = 102, Name = "Microbiología", Instructor = "Dra. Gómez", IsActive = false }
-            },
-            "2" => new List<Course> // Ciencias Agronómicas y Veterinarias
-            {
-                new Course { Id = 201, Name = "Producción Animal", Instructor = "Dr. López", IsActive = false },
-                new Course { Id = 202, Name = "Cultivos Agrícolas", Instructor = "Dra. Martínez", IsActive = false }
-            },
-            "3" => new List<Course> // Ciencias del Agua y Medio Ambiente
-            {
-                new Course { Id = 301, Name = "Hidrología", Instructor = "Dr. Ramírez", IsActive = false },
-                new Course { Id = 302, Name = "Ecología", Instructor = "Dra. García", IsActive = false }
-            },
-            "4" => new List<Course> // Ciencias Administrativas
-            {
-                new Course { Id = 401, Name = "Administración Estratégica", Instructor = "Dr. Rodríguez", IsActive = false },
-                new Course { Id = 402, Name = "Gestión de Proyectos", Instructor = "Dra. Hernández", IsActive = false }
-            },
             "5" => new List<Course> // Computación y Diseño
             {
-                new Course { Id = 501, Name = "Programación Avanzada", Instructor = "Omar Lopez", IsActive = false },
-                new Course { Id = 502, Name = "Diseño de software", Instructor = "Dra. Torres", IsActive = false },
-                new Course { Id = 503, Name = "Arquitectura de software", Instructor = "Adrian Macias", IsActive = false },
-                new Course { Id = 504, Name = "Programacion I", Instructor = "Selene Vasquez", IsActive = false },
-                new Course { Id = 505, Name = "Base de datos", Instructor = "Gibran Duran", IsActive = false },
-                new Course { Id = 506, Name = "Programacion II", Instructor = "Domitsu Kono", IsActive = false },
-                new Course { Id = 507, Name = "Estructura de datos", Instructor = "Domitsu Kono", IsActive = false },
-                new Course { Id = 508, Name = "Estructura de datos", Instructor = "Adrian Macias", IsActive = false },
-                new Course { Id = 509, Name = "Seguridad informatica", Instructor = "Alberto Felix", IsActive = false },
-                new Course { Id = 510, Name = "Base de datos Avanzadas", Instructor = "Gibran Duran", IsActive = false },
-                new Course { Id = 511, Name = "Metodologias Agiles", Instructor = "Gilberto Borrego", IsActive = false }
+                new Course { Id = 501, Name = "Programación Avanzada", Instructor = "Omar Lopez", Aula = "E-305", Horario = "Lu,Mi,Vi 10:00 am-11:30 am", IsActive = false },
+                new Course { Id = 502, Name = "Diseño de Interfaces", Instructor = "Ana Martínez", Aula = "D-201", Horario = "Ma,Ju 2:00 pm-4:00 pm", IsActive = false },
+                new Course { Id = 503, Name = "Bases de Datos", Instructor = "Carlos Sánchez", Aula = "E-310", Horario = "Lu,Mi 8:00 am-10:00 am", IsActive = false },
+                new Course { Id = 504, Name = "Inteligencia Artificial", Instructor = "Laura Gómez", Aula = "F-105", Horario = "Vi 3:00 pm-7:00 pm", IsActive = false },
+                new Course { Id = 505, Name = "Desarrollo Web", Instructor = "Roberto Díaz", Aula = "E-301", Horario = "Ma,Ju 10:00 am-12:00 pm", IsActive = false }
             },
-            "6" => new List<Course> // Contaduría y Finanzass
-            {
-                new Course { Id = 601, Name = "Contabilidad Financiera", Instructor = "Dr. Flores", IsActive = false },
-                new Course { Id = 602, Name = "Análisis de Inversiones", Instructor = "Dra. Díaz", IsActive = false }
-            },
-            "7" => new List<Course> // Desarrollo Académico
-            {
-                new Course { Id = 701, Name = "Metodología de la Enseñanza", Instructor = "Dr. Mendoza", IsActive = false },
-                new Course { Id = 702, Name = "Evaluación Educativa", Instructor = "Dra. Vargas", IsActive = false }
-            },
-            "8" => new List<Course> // Educación
-            {
-                new Course { Id = 801, Name = "Teorías del Aprendizaje", Instructor = "Dr. Castro", IsActive = false },
-                new Course { Id = 802, Name = "Diseño Curricular", Instructor = "Dra. Reyes", IsActive = false }
-            },
-            "9" => new List<Course> // Gestión y Apoyo a Cuerpos Académicos
-            {
-                new Course { Id = 901, Name = "Metodología de la Investigación", Instructor = "Dr. Ortiz", IsActive = false },
-                new Course { Id = 902, Name = "Gestión de Grupos de Investigación", Instructor = "Dra. Cruz", IsActive = false }
-            },
-            "10" => new List<Course> // Gestión y Apoyo a Programas Educativos
-            {
-                new Course { Id = 1001, Name = "Evaluación de Programas", Instructor = "Dr. Morales", IsActive = false },
-                new Course { Id = 1002, Name = "Acreditación Educativa", Instructor = "Dra. Jiménez", IsActive = false }
-            },
-            "11" => new List<Course> // Ingeniería Civil y Arquitectura
-            {
-                new Course { Id = 1101, Name = "Estructuras", Instructor = "Dr. Gutiérrez", IsActive = false },
-                new Course { Id = 1102, Name = "Diseño Arquitectónico", Instructor = "Dra. Ruiz", IsActive = false }
-            },
-            "12" => new List<Course> // Ingeniería Eléctrica y Electrónica
-            {
-                new Course { Id = 1201, Name = "Circuitos Eléctricos", Instructor = "Dr. Aguilar", IsActive = false },
-                new Course { Id = 1202, Name = "Sistemas Digitales", Instructor = "Dra. Medina", IsActive = false }
-            },
-            "13" => new List<Course> // Ingeniería Industrial
-            {
-                new Course { Id = 1301, Name = "Procesos de Manufactura", Instructor = "Dr. Vega", IsActive = false },
-                new Course { Id = 1302, Name = "Logística y Cadena de Suministro", Instructor = "Dra. Campos", IsActive = false }
-            },
-            "14" => new List<Course> // Matemáticas
-            {
-                new Course { Id = 1401, Name = "Cálculo Avanzado", Instructor = "Dr. Ramos", IsActive = false },
-                new Course { Id = 1402, Name = "Álgebra Lineal", Instructor = "Dra. Silva", IsActive = false }
-            },
-            "15" => new List<Course> // Psicología
-            {
-                new Course { Id = 1501, Name = "Psicología Educativa", Instructor = "Dr. Navarro", IsActive = false },
-                new Course { Id = 1502, Name = "Psicología Organizacional", Instructor = "Dra. Acosta", IsActive = false }
-            },
-            "16" => new List<Course> // Sociocultural
-            {
-                new Course { Id = 1601, Name = "Antropología Social", Instructor = "Dr. Molina", IsActive = false },
-                new Course { Id = 1602, Name = "Estudios Culturales", Instructor = "Dra. Fuentes", IsActive = false }
-            },
-            _ => new List<Course>() // Default case for unexpected or empty values
+            // Otros departamentos...
+            _ => new List<Course>()
         };
+        
+        // Copiar a allCourses para mantener consistencia
+        allCourses = new List<Course>(courses);
     }
 
     private class Course
@@ -393,6 +628,28 @@
         public int Id { get; set; }
         public string? Name { get; set; }
         public string? Instructor { get; set; }
+        public string? Aula { get; set; }
+        public string? Horario { get; set; }
         public bool IsActive { get; set; }
+        public string? IdComb { get; set; }
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
