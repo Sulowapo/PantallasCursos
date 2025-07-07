@@ -83,6 +83,18 @@
         margin-left: 5px;
         font-size: 0.8em;
     }
+
+    /* Estilos para el checkbox "Seleccionar todos" */
+    #selectAll {
+        cursor: pointer;
+        width: 18px;
+        height: 18px;
+    }
+
+    #selectAll + label {
+        cursor: pointer;
+        user-select: none;
+    }
 </style>
 
 <div class="form-group">
@@ -133,7 +145,12 @@
             </th>
             <th>Aula</th>
             <th>Horario</th>
-            <th>Activado en iVirtual</th>
+            <th>
+                <div class="d-flex align-items-center">
+                    <input type="checkbox" @bind="selectAllChecked" @onclick="SelectAllCourses" id="selectAll" />
+                    <label for="selectAll" class="ms-2 mb-0">Activado en iVirtual</label>
+                </div>
+            </th>
         </tr>
     </thead>
     <tbody>
@@ -166,6 +183,17 @@
         <button class="btn btn-outline-primary" @onclick="LoadMoreCourses">
             Ver más cursos
         </button>
+        <span class="ms-3 text-muted">
+            Mostrando @courses.Count de @allCourses.Count cursos
+        </span>
+    </div>
+}
+else if (courses.Any())
+{
+    <div class="text-center mt-3 mb-3">
+        <span class="text-muted">
+            Mostrando @courses.Count de @allCourses.Count cursos
+        </span>
     </div>
 }
 
@@ -229,6 +257,7 @@
     private int pageSize = 50; // Tamaño de cada lote
     private int currentPage = 0; // Página actual
     private bool hasMoreCourses = false; // Indica si hay más cursos para cargar
+    private bool selectAllChecked = false; // Estado del checkbox "Seleccionar todos"
 
     // Sorting properties
     private string currentSortColumn = "";
@@ -237,6 +266,19 @@
     protected override void OnInitialized()
     {
         LoadCoursesFromCSV(); // Cargar cursos desde CSV al iniciar
+    }
+
+    // Método para seleccionar/deseleccionar todos los cursos
+    private void SelectAllCourses()
+    {
+        // Invertimos el estado actual (si estaba marcado, lo desmarcamos y viceversa)
+        selectAllChecked = !selectAllChecked;
+        
+        // Aplicamos el mismo estado a todos los cursos mostrados
+        foreach (var course in courses)
+        {
+            course.IsActive = selectAllChecked;
+        }
     }
 
     private void Search()
@@ -256,7 +298,18 @@
         if (startIndex < allCourses.Count)
         {
             // Añadir el siguiente lote de cursos a la lista mostrada
-            courses.AddRange(allCourses.Skip(startIndex).Take(pageSize));
+            var newCourses = allCourses.Skip(startIndex).Take(pageSize).ToList();
+            
+            // Si "Seleccionar todos" está marcado, marcar también los nuevos cursos
+            if (selectAllChecked)
+            {
+                foreach (var course in newCourses)
+                {
+                    course.IsActive = true;
+                }
+            }
+            
+            courses.AddRange(newCourses);
             
             // Verificar si hay más cursos para cargar
             hasMoreCourses = endIndex < allCourses.Count;
@@ -335,6 +388,134 @@
         // Close confirmation dialog
         _showConfirmDialog = false;
 
+        try
+        {
+            string filePath = Path.Combine(Directory.GetCurrentDirectory(), "resources", "cat_EM2025.csv");
+            
+            if (File.Exists(filePath))
+            {
+                // Leer todo el contenido del archivo
+                string[] lines;
+                using (var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                using (var reader = new StreamReader(fileStream, Encoding.GetEncoding("ISO-8859-1")))
+                {
+                    string content = reader.ReadToEnd();
+                    lines = content.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                }
+                
+                // Crear un diccionario para rastrear los cursos activados
+                Dictionary<string, bool> cursosActivados = new Dictionary<string, bool>();
+                foreach (var course in courses.Where(c => c.IsActive))
+                {
+                    string key = $"{course.Id}_{course.Name}";
+                    cursosActivados[key] = true;
+                }
+                
+                // Crear una lista para las líneas modificadas
+                List<string> lineasModificadas = new List<string>();
+                
+                // Añadir encabezados (primeras dos líneas)
+                if (lines.Length > 0) lineasModificadas.Add(lines[0]);
+                if (lines.Length > 1) 
+                {
+                    // Si la segunda línea no tiene la columna "Activado", añadirla
+                    if (!lines[1].Contains("Activado"))
+                    {
+                        lineasModificadas.Add(lines[1] + ",Activado");
+                    }
+                    else
+                    {
+                        lineasModificadas.Add(lines[1]);
+                    }
+                }
+                
+                // Procesar el resto de las líneas
+                for (int i = 2; i < lines.Length; i++)
+                {
+                    string line = lines[i];
+                    if (string.IsNullOrWhiteSpace(line)) 
+                    {
+                        lineasModificadas.Add(line);
+                        continue;
+                    }
+                    
+                    // Procesar la línea correctamente, teniendo en cuenta las comas dentro de comillas
+                    List<string> fields = new List<string>();
+                    bool inQuotes = false;
+                    StringBuilder field = new StringBuilder();
+                    
+                    for (int j = 0; j < line.Length; j++)
+                    {
+                        char c = line[j];
+                        
+                        if (c == '"')
+                        {
+                            inQuotes = !inQuotes;
+                            field.Append(c);
+                        }
+                        else if (c == ',' && !inQuotes)
+                        {
+                            fields.Add(field.ToString());
+                            field.Clear();
+                        }
+                        else
+                        {
+                            field.Append(c);
+                        }
+                    }
+                    
+                    // Añadir el último campo
+                    fields.Add(field.ToString());
+                    
+                    // Verificar que haya suficientes campos
+                    if (fields.Count < 3) 
+                    {
+                        lineasModificadas.Add(line);
+                        continue;
+                    }
+                    
+                    // Obtener los campos relevantes
+                    string idCurso = fields.Count > 3 ? fields[3].Trim() : "";
+                    string nombreCurso = fields.Count > 6 ? fields[6].Trim() : "";
+                    
+                    // Verificar si este curso está activado
+                    string key = $"{idCurso}_{nombreCurso}";
+                    bool estaActivado = cursosActivados.ContainsKey(key);
+                    
+                    // Si la línea ya tiene un valor para "Activado", actualizarlo
+                    if (fields.Count > 30 && fields[30].Contains("Activado"))
+                    {
+                        fields[30] = estaActivado ? "Y" : "N";
+                    }
+                    else
+                    {
+                        // Añadir el campo "Activado"
+                        fields.Add(estaActivado ? "Y" : "N");
+                    }
+                    
+                    // Reconstruir la línea
+                    lineasModificadas.Add(string.Join(",", fields));
+                }
+                
+                // Escribir las líneas modificadas de vuelta al archivo
+                using (var fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None))
+                using (var writer = new StreamWriter(fileStream, Encoding.GetEncoding("ISO-8859-1")))
+                {
+                    foreach (var line in lineasModificadas)
+                    {
+                        writer.WriteLine(line);
+                    }
+                }
+                
+                Console.WriteLine("Cambios guardados en el CSV");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al guardar cambios en CSV: {ex.Message}");
+            Console.WriteLine($"Stack trace: {ex.StackTrace}");
+        }
+
         // Actualizar la lista completa de cursos
         foreach (var displayedCourse in courses)
         {
@@ -365,6 +546,7 @@
         allCourses.Clear();
         courses.Clear();
         currentPage = 0;
+        selectAllChecked = false; // Reiniciar el estado del checkbox "Seleccionar todos"
         
         try
         {
@@ -434,8 +616,22 @@
                     string idComb = fields.Count > 8 ? fields[8].Trim() : "";
                     string materia = fields.Count > 27 ? fields[27].Trim() : "";
                     
+                    // Verificar si el curso está activado
+                    bool estaActivado = false;
+                    if (fields.Count > 30)
+                    {
+                        estaActivado = fields[30].Trim().Equals("Y", StringComparison.OrdinalIgnoreCase);
+                    }
+                    
+                    // Si el curso está activado, no lo incluimos en la lista
+                    if (estaActivado)
+                    {
+                        Console.WriteLine($"Curso activado ignorado: ID={idCurso}, Nombre={nombreCurso}");
+                        continue;
+                    }
+                    
                     // Obtener datos para las nuevas columnas
-                    string aula = fields.Count > 13 ? fields[13].Trim() : "";
+                    string aula = fields.Count > 25 ? fields[25].Trim() : "";
                     
                     // Datos para el horario
                     string horaInicio = fields.Count > 16 ? fields[16].Trim() : "";
@@ -634,6 +830,23 @@
         public string? IdComb { get; set; }
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
